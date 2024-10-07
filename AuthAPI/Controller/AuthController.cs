@@ -5,6 +5,8 @@ using AuthService.Application.DTO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AuthService.Infrastructure.Data;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace AuthService.API.Controllers
 {
@@ -24,11 +26,10 @@ namespace AuthService.API.Controllers
         public async Task<ActionResult<IEnumerable<UserDTO>>> GetUsers()
         {
             var users = await _context.Users
-                .Include(u => u.Roles) // Incluir la relación con Roles
-                .ThenInclude(r => r.Permissions) // Incluir la relación de Roles con Permisos
+                .Include(u => u.Roles)
+                .ThenInclude(r => r.Permissions)
                 .ToListAsync();
 
-            // Mapeo de entidades a DTOs
             var userDTOs = users.Select(user => new UserDTO
             {
                 Id = user.Id,
@@ -63,7 +64,6 @@ namespace AuthService.API.Controllers
                 return NotFound();
             }
 
-            // Mapeo de entidad a DTO
             var userDTO = new UserDTO
             {
                 Id = user.Id,
@@ -88,14 +88,16 @@ namespace AuthService.API.Controllers
         [HttpPost("Users")]
         public async Task<ActionResult<User>> PostUser([FromBody] UserDTO userDTO)
         {
+            // Hash the password before saving it
+            var hashedPassword = HashPassword(userDTO.PasswordHash);
+
             var user = new User
             {
                 Username = userDTO.Username,
                 Email = userDTO.Email,
-                PasswordHash = userDTO.PasswordHash, // Aquí deberíamos aplicar una estrategia de hashing
+                PasswordHash = hashedPassword, // Save the hashed password
                 Roles = userDTO.Roles.Select(roleDTO => new Role
                 {
-                    Id = roleDTO.Id, // Si el rol ya existe, solo usa el ID
                     RoleName = roleDTO.RoleName
                 }).ToList()
             };
@@ -103,7 +105,6 @@ namespace AuthService.API.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // Devolver el usuario creado
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
         }
 
@@ -141,12 +142,10 @@ namespace AuthService.API.Controllers
                 return NotFound();
             }
 
-            // Actualizar datos del usuario
             user.Username = userDTO.Username;
             user.Email = userDTO.Email;
 
-            // Actualizar roles
-            user.Roles.Clear(); // Limpiar roles existentes
+            user.Roles.Clear(); // Clear existing roles
             user.Roles = userDTO.Roles.Select(roleDTO => new Role
             {
                 Id = roleDTO.Id,
@@ -177,6 +176,17 @@ namespace AuthService.API.Controllers
         private bool UserExists(int id)
         {
             return _context.Users.Any(u => u.Id == id);
+        }
+
+        // Utility function to hash passwords
+        private string HashPassword(string password)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var bytes = Encoding.UTF8.GetBytes(password);
+                var hash = sha256.ComputeHash(bytes);
+                return Convert.ToBase64String(hash);
+            }
         }
     }
 }

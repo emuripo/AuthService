@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AuthService.Infrastructure.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    [Migration("20241006180336_InitialMigrate")]
+    [Migration("20241007021724_InitialMigrate")]
     partial class InitialMigrate
     {
         /// <inheritdoc />
@@ -44,6 +44,26 @@ namespace AuthService.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Permissions");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Description = "Permission to view reports",
+                            PermissionName = "CanViewReports"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Description = "Permission to edit users",
+                            PermissionName = "CanEditUsers"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Description = "Permission to manage roles",
+                            PermissionName = "CanManageRoles"
+                        });
                 });
 
             modelBuilder.Entity("AuthService.Core.Entidades.Role", b =>

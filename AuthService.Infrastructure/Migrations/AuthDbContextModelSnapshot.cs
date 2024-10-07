@@ -41,6 +41,26 @@ namespace AuthService.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Permissions");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Description = "Permission to view reports",
+                            PermissionName = "CanViewReports"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Description = "Permission to edit users",
+                            PermissionName = "CanEditUsers"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Description = "Permission to manage roles",
+                            PermissionName = "CanManageRoles"
+                        });
                 });
 
             modelBuilder.Entity("AuthService.Core.Entidades.Role", b =>

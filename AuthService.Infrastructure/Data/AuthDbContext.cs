@@ -22,7 +22,6 @@ namespace AuthService.Infrastructure.Data
                 .WithMany(r => r.Users)
                 .UsingEntity(j => j.ToTable("UserRoles"));
 
-            
             modelBuilder.Entity<Role>()
                 .HasMany(r => r.Permissions)
                 .WithMany(p => p.Roles)
@@ -42,7 +41,13 @@ namespace AuthService.Infrastructure.Data
                 .Property(p => p.Description)
                 .IsRequired()
                 .HasMaxLength(200);
+
+            // Seed de datos iniciales para la tabla de Permisos
+            modelBuilder.Entity<Permission>().HasData(
+                new Permission { Id = 1, PermissionName = "CanViewReports", Description = "Permission to view reports" },
+                new Permission { Id = 2, PermissionName = "CanEditUsers", Description = "Permission to edit users" },
+                new Permission { Id = 3, PermissionName = "CanManageRoles", Description = "Permission to manage roles" }
+            );
         }
     }
 }
-

@@ -2,6 +2,8 @@
 
 #nullable disable
 
+#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+
 namespace AuthService.Infrastructure.Migrations
 {
     /// <inheritdoc />
@@ -99,6 +101,16 @@ namespace AuthService.Infrastructure.Migrations
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.InsertData(
+                table: "Permissions",
+                columns: new[] { "Id", "Description", "PermissionName" },
+                values: new object[,]
+                {
+                    { 1, "Permission to view reports", "CanViewReports" },
+                    { 2, "Permission to edit users", "CanEditUsers" },
+                    { 3, "Permission to manage roles", "CanManageRoles" }
                 });
 
             migrationBuilder.CreateIndex(
