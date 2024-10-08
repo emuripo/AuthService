@@ -1,6 +1,7 @@
 ﻿using AuthService.Core.Entidades;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace AuthService.Core.Entidades
 {
@@ -10,12 +11,12 @@ namespace AuthService.Core.Entidades
         public int Id { get; set; }
 
         [Required]
-        public string RoleName { get; set; } = string.Empty;  // Nombre del rol
+        public string RoleName { get; set; } = string.Empty;
 
-        // Relación muchos a muchos con User (esto es lo que faltaba)
+        [JsonIgnore]
         public ICollection<User> Users { get; set; } = new List<User>();
 
-        // Relación muchos a muchos con permisos
+        
         public ICollection<Permission> Permissions { get; set; } = new List<Permission>();
     }
 }

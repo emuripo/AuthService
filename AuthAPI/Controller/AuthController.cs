@@ -3,10 +3,15 @@ using Microsoft.EntityFrameworkCore;
 using AuthService.Core.Entidades;
 using AuthService.Application.DTO;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using AuthService.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System;
+using System.Security.Claims;
 
 namespace AuthService.API.Controllers
 {
@@ -15,10 +20,77 @@ namespace AuthService.API.Controllers
     public class AuthController : ControllerBase
     {
         private readonly AuthDbContext _context;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(AuthDbContext context)
+        public AuthController(AuthDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
+        }
+
+        // POST: api/Auth/Register
+        [HttpPost("Register")]
+        public async Task<ActionResult<User>> Register([FromBody] UserDTO userDTO)
+        {
+            // Hash the password before saving it
+            var hashedPassword = HashPassword(userDTO.PasswordHash);
+
+            var user = new User
+            {
+                Username = userDTO.Username,
+                Email = userDTO.Email,
+                PasswordHash = hashedPassword, // Save the hashed password
+                Roles = userDTO.Roles.Select(roleDTO => new Role
+                {
+                    RoleName = roleDTO.RoleName
+                }).ToList()
+            };
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+        }
+
+        // POST: api/Auth/Login
+        [HttpPost("Login")]
+        public async Task<IActionResult> Login([FromBody] LoginDTO loginDTO)
+        {
+            var user = await _context.Users
+                .Include(u => u.Roles)
+                .FirstOrDefaultAsync(u => u.Username == loginDTO.Username);
+
+            if (user == null || !VerifyPasswordHash(loginDTO.Password, user.PasswordHash))
+            {
+                return Unauthorized("Invalid username or password.");
+            }
+
+            var token = GenerateJwtToken(user);
+            return Ok(new { token });
+        }
+
+        private string GenerateJwtToken(User user)
+        {
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Email, user.Email)
+            };
+
+            // Add roles as claims
+            claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role.RoleName)));
+
+            var token = new JwtSecurityToken(
+                issuer: _configuration["Jwt:Issuer"],
+                audience: _configuration["Jwt:Audience"],
+                claims: claims,
+                expires: DateTime.Now.AddHours(1),
+                signingCredentials: creds);
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
         // GET: api/Auth/Users
@@ -84,101 +156,15 @@ namespace AuthService.API.Controllers
             return Ok(userDTO);
         }
 
-        // POST: api/Auth/Users
-        [HttpPost("Users")]
-        public async Task<ActionResult<User>> PostUser([FromBody] UserDTO userDTO)
+        private bool VerifyPasswordHash(string password, string storedHash)
         {
-            // Hash the password before saving it
-            var hashedPassword = HashPassword(userDTO.PasswordHash);
-
-            var user = new User
+            using (var sha256 = SHA256.Create())
             {
-                Username = userDTO.Username,
-                Email = userDTO.Email,
-                PasswordHash = hashedPassword, // Save the hashed password
-                Roles = userDTO.Roles.Select(roleDTO => new Role
-                {
-                    RoleName = roleDTO.RoleName
-                }).ToList()
-            };
-
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+                var computedHash = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+                return Convert.ToBase64String(computedHash) == storedHash;
+            }
         }
 
-        // DELETE: api/Auth/Users/5
-        [HttpDelete("Users/{id}")]
-        public async Task<IActionResult> DeleteUser(int id)
-        {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-
-        // PUT: api/Auth/Users/5
-        [HttpPut("Users/{id}")]
-        public async Task<IActionResult> PutUser(int id, [FromBody] UserDTO userDTO)
-        {
-            if (id != userDTO.Id)
-            {
-                return BadRequest();
-            }
-
-            var user = await _context.Users
-                .Include(u => u.Roles)
-                .FirstOrDefaultAsync(u => u.Id == id);
-
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            user.Username = userDTO.Username;
-            user.Email = userDTO.Email;
-
-            user.Roles.Clear(); // Clear existing roles
-            user.Roles = userDTO.Roles.Select(roleDTO => new Role
-            {
-                Id = roleDTO.Id,
-                RoleName = roleDTO.RoleName
-            }).ToList();
-
-            _context.Entry(user).State = EntityState.Modified;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!UserExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
-
-            return NoContent();
-        }
-
-        private bool UserExists(int id)
-        {
-            return _context.Users.Any(u => u.Id == id);
-        }
-
-        // Utility function to hash passwords
         private string HashPassword(string password)
         {
             using (var sha256 = SHA256.Create())

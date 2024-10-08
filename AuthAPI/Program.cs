@@ -1,8 +1,12 @@
 using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using AuthService.Infrastructure.Data;
 using AuthService.Application.Mappings;
+using System.Text.Json.Serialization; // Para manejar las referencias cíclicas en JSON
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +31,28 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 // Configurar AutoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 
-// Configurar Swagger para la documentación de la API
+// Configurar JWT Authentication (cargado desde appsettings.json)
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"], // Tomado desde appsettings.json
+        ValidAudience = builder.Configuration["Jwt:Audience"], // Tomado desde appsettings.json
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"])), // Clave secreta desde appsettings.json
+        ClockSkew = TimeSpan.Zero // Eliminar la diferencia de tiempo por defecto
+    };
+});
+
+// Configurar Swagger para la documentación de la API sin requerir autenticación
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -45,13 +70,24 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-builder.Services.AddControllers();
+// Configurar controladores y habilitar el manejo de referencias cíclicas
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    // Manejo de ciclos de referencia
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+    options.JsonSerializerOptions.WriteIndented = true; // Opcional, para mejor legibilidad
+});
 
 var app = builder.Build();
 
 // Activar CORS antes de los controladores y otras configuraciones
 app.UseCors("AllowLocalhost3000");
 
+// Autenticación y Autorización
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Migraciones y creación de base de datos si no existe
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -82,6 +118,5 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseAuthorization();
 app.MapControllers();
 app.Run();
