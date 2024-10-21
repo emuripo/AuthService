@@ -54,7 +54,14 @@ namespace AuthService.API.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+            // Devolver solo los campos esenciales en la respuesta
+            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new
+            {
+                Id = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                IsActive = user.IsActive
+            });
         }
 
         // POST: api/Auth/Login
@@ -125,7 +132,7 @@ namespace AuthService.API.Controllers
                     {
                         Id = rp.Permission.Id,
                         PermissionName = rp.Permission.PermissionName,
-                        Description = rp.Permission.Description // Asegúrate de mapear también la descripción
+                        Description = rp.Permission.Description // Mapea también la descripción
                     }).ToList()
                 }).ToList()
             }).ToList();
