@@ -35,15 +35,17 @@ namespace AuthService.API.Controllers
             // Hash the password before saving it
             var hashedPassword = HashPassword(userDTO.PasswordHash);
 
+            // Buscar los roles existentes en la base de datos según el nombre del rol
+            var roles = await _context.Roles
+                .Where(r => userDTO.Roles.Any(dtoRole => dtoRole.RoleName == r.RoleName))
+                .ToListAsync();
+
             var user = new User
             {
                 Username = userDTO.Username,
                 Email = userDTO.Email,
                 PasswordHash = hashedPassword, // Save the hashed password
-                Roles = userDTO.Roles.Select(roleDTO => new Role
-                {
-                    RoleName = roleDTO.RoleName
-                }).ToList()
+                Roles = roles  // Asignar roles existentes
             };
 
             _context.Users.Add(user);
@@ -99,7 +101,8 @@ namespace AuthService.API.Controllers
         {
             var users = await _context.Users
                 .Include(u => u.Roles)
-                .ThenInclude(r => r.Permissions)
+                .ThenInclude(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
                 .ToListAsync();
 
             var userDTOs = users.Select(user => new UserDTO
@@ -111,10 +114,10 @@ namespace AuthService.API.Controllers
                 {
                     Id = role.Id,
                     RoleName = role.RoleName,
-                    Permissions = role.Permissions.Select(permission => new PermissionDTO
+                    Permissions = role.RolePermissions.Select(rp => new PermissionDTO
                     {
-                        Id = permission.Id,
-                        PermissionName = permission.PermissionName
+                        Id = rp.Permission.Id,
+                        PermissionName = rp.Permission.PermissionName
                     }).ToList()
                 }).ToList()
             }).ToList();
@@ -128,7 +131,8 @@ namespace AuthService.API.Controllers
         {
             var user = await _context.Users
                 .Include(u => u.Roles)
-                .ThenInclude(r => r.Permissions)
+                .ThenInclude(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
                 .FirstOrDefaultAsync(u => u.Id == id);
 
             if (user == null)
@@ -145,15 +149,45 @@ namespace AuthService.API.Controllers
                 {
                     Id = role.Id,
                     RoleName = role.RoleName,
-                    Permissions = role.Permissions.Select(permission => new PermissionDTO
+                    Permissions = role.RolePermissions.Select(rp => new PermissionDTO
                     {
-                        Id = permission.Id,
-                        PermissionName = permission.PermissionName
+                        Id = rp.Permission.Id,
+                        PermissionName = rp.Permission.PermissionName
                     }).ToList()
                 }).ToList()
             };
 
             return Ok(userDTO);
+        }
+
+        // PUT: api/Auth/Users/5
+        [HttpPut("Users/{id}")]
+        public async Task<IActionResult> UpdateUser(int id, [FromBody] CreateUpdateUserDTO updateUserDTO)
+        {
+            var user = await _context.Users
+                .Include(u => u.Roles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+            {
+                return NotFound("User not found.");
+            }
+
+            // Actualizar campos del usuario
+            user.Username = updateUserDTO.Username;
+            user.Email = updateUserDTO.Email;
+
+            // Actualizar los roles del usuario
+            var roles = await _context.Roles
+                .Where(r => updateUserDTO.RoleIds.Contains(r.Id))
+                .ToListAsync();
+
+            user.Roles = roles;
+
+            // Guardar los cambios en la base de datos
+            await _context.SaveChangesAsync();
+
+            return NoContent(); 
         }
 
         private bool VerifyPasswordHash(string password, string storedHash)

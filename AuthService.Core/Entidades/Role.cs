@@ -16,8 +16,6 @@ namespace AuthService.Core.Entidades
 
         [JsonIgnore]
         public ICollection<User> Users { get; set; } = new List<User>();
-
-        
-        public ICollection<Permission> Permissions { get; set; } = new List<Permission>();
+        public ICollection<RolePermission> RolePermissions { get; set; } = new List<RolePermission>();
     }
 }
