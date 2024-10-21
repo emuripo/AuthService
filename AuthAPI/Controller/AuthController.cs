@@ -30,7 +30,7 @@ namespace AuthService.API.Controllers
 
         // POST: api/Auth/Register
         [HttpPost("Register")]
-        public async Task<ActionResult<User>> Register([FromBody] RegisterUserDTO userDTO)
+        public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterUserDTO userDTO)
         {
             // Hash the password before saving it
             var hashedPassword = HashPassword(userDTO.PasswordHash);
@@ -55,14 +55,17 @@ namespace AuthService.API.Controllers
             await _context.SaveChangesAsync();
 
             // Devolver solo los campos esenciales en la respuesta
-            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new
+            var userResponse = new UserResponseDTO
             {
                 Id = user.Id,
                 Username = user.Username,
                 Email = user.Email,
                 IsActive = user.IsActive
-            });
+            };
+
+            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userResponse);
         }
+
 
         // POST: api/Auth/Login
         [HttpPost("Login")]

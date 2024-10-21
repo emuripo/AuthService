@@ -12,7 +12,8 @@ namespace AuthService.Application.DTO
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public bool IsActive { get; set; }
-        public List<int> RoleIds { get; set; } = new List<int>(); // Solo los IDs de los roles
+        public List<int> RoleIds { get; set; } = new List<int>(); // Solo IDs de los roles
     }
+
 
 }
