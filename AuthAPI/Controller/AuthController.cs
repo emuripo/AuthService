@@ -30,14 +30,16 @@ namespace AuthService.API.Controllers
 
         // POST: api/Auth/Register
         [HttpPost("Register")]
-        public async Task<ActionResult<User>> Register([FromBody] UserDTO userDTO)
+        public async Task<ActionResult<User>> Register([FromBody] RegisterUserDTO userDTO)
         {
             // Hash the password before saving it
             var hashedPassword = HashPassword(userDTO.PasswordHash);
 
-            // Buscar los roles existentes en la base de datos según el nombre del rol
+            // Buscar los roles en la base de datos según los IDs
             var roles = await _context.Roles
-                .Where(r => userDTO.Roles.Any(dtoRole => dtoRole.RoleName == r.RoleName))
+                .Where(r => userDTO.RoleIds.Contains(r.Id))
+                .Include(r => r.RolePermissions) // Incluye los permisos del rol
+                .ThenInclude(rp => rp.Permission)
                 .ToListAsync();
 
             var user = new User
@@ -45,7 +47,8 @@ namespace AuthService.API.Controllers
                 Username = userDTO.Username,
                 Email = userDTO.Email,
                 PasswordHash = hashedPassword, // Save the hashed password
-                Roles = roles  // Asignar roles existentes
+                Roles = roles,  // Asignar roles existentes
+                IsActive = userDTO.IsActive
             };
 
             _context.Users.Add(user);
@@ -53,6 +56,7 @@ namespace AuthService.API.Controllers
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
         }
+
 
         // POST: api/Auth/Login
         [HttpPost("Login")]
