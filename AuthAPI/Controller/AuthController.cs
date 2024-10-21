@@ -57,13 +57,14 @@ namespace AuthService.API.Controllers
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
         }
 
-
         // POST: api/Auth/Login
         [HttpPost("Login")]
         public async Task<IActionResult> Login([FromBody] LoginDTO loginDTO)
         {
             var user = await _context.Users
                 .Include(u => u.Roles)
+                .ThenInclude(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
                 .FirstOrDefaultAsync(u => u.Username == loginDTO.Username);
 
             if (user == null || !VerifyPasswordHash(loginDTO.Password, user.PasswordHash))
@@ -86,8 +87,10 @@ namespace AuthService.API.Controllers
                 new Claim(ClaimTypes.Email, user.Email)
             };
 
-            // Add roles as claims
+            // Add roles and permissions as claims
             claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role.RoleName)));
+            claims.AddRange(user.Roles
+                .SelectMany(role => role.RolePermissions.Select(rp => new Claim("Permission", rp.Permission.PermissionName))));
 
             var token = new JwtSecurityToken(
                 issuer: _configuration["Jwt:Issuer"],
@@ -191,7 +194,7 @@ namespace AuthService.API.Controllers
             // Guardar los cambios en la base de datos
             await _context.SaveChangesAsync();
 
-            return NoContent(); 
+            return NoContent();
         }
 
         private bool VerifyPasswordHash(string password, string storedHash)
