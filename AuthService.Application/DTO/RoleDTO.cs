@@ -1,5 +1,4 @@
-﻿using AuthService.Application;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace AuthService.Application.DTO
 {
@@ -7,7 +6,8 @@ namespace AuthService.Application.DTO
     {
         public int Id { get; set; }
         public string RoleName { get; set; } = string.Empty;
-        public List<int> PermissionIds { get; set; } = new List<int>(); // Solo los IDs de los permisos
-    }
 
+        // Agregar la propiedad Permissions
+        public List<PermissionDTO> Permissions { get; set; } = new List<PermissionDTO>();
+    }
 }

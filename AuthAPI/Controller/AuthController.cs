@@ -124,7 +124,8 @@ namespace AuthService.API.Controllers
                     Permissions = role.RolePermissions.Select(rp => new PermissionDTO
                     {
                         Id = rp.Permission.Id,
-                        PermissionName = rp.Permission.PermissionName
+                        PermissionName = rp.Permission.PermissionName,
+                        Description = rp.Permission.Description // Asegúrate de mapear también la descripción
                     }).ToList()
                 }).ToList()
             }).ToList();
@@ -159,7 +160,8 @@ namespace AuthService.API.Controllers
                     Permissions = role.RolePermissions.Select(rp => new PermissionDTO
                     {
                         Id = rp.Permission.Id,
-                        PermissionName = rp.Permission.PermissionName
+                        PermissionName = rp.Permission.PermissionName,
+                        Description = rp.Permission.Description
                     }).ToList()
                 }).ToList()
             };
