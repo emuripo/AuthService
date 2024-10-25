@@ -13,11 +13,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Configuración de CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowLocalhost3000",
-        builder => builder.WithOrigins("http://localhost:3000")
-                          .AllowAnyMethod()
-                          .AllowAnyHeader());
+    options.AddPolicy("AllowLocalhost",
+        builder => builder
+            .WithOrigins("http://localhost:8087", "http://localhost:3000")
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials());
 });
+;
 
 // Configurar DbContext y conexión a SQL Server
 builder.Services.AddDbContext<AuthDbContext>(options =>
@@ -25,11 +28,14 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
     sqlOptions =>
     {
         sqlOptions.MigrationsAssembly("AuthService.Infrastructure");
-        sqlOptions.EnableRetryOnFailure();
+        sqlOptions.EnableRetryOnFailure(); // Habilita reintentos automáticos en caso de error transitorio
     }));
 
 // Configurar AutoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
+
+// **Registrar HttpClient**
+builder.Services.AddHttpClient(); // Agrega HttpClient para IHttpClientFactory
 
 // Configurar JWT Authentication (cargado desde appsettings.json)
 builder.Services.AddAuthentication(options =>
@@ -70,31 +76,33 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Configurar controladores y habilitar el manejo de referencias cíclicas
+// Configurar controladores y habilitar el manejo de referencias cíclicas, evitar $values y usar camelCase
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    // Manejo de ciclos de referencia
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+    // Evitar ciclos de referencia
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+
+    // Evitar que se incluyan campos como $values en colecciones
+    options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     options.JsonSerializerOptions.WriteIndented = true; // Opcional, para mejor legibilidad
 });
 
 var app = builder.Build();
 
-// Activar CORS antes de los controladores y otras configuraciones
-app.UseCors("AllowLocalhost3000");
+
+app.UseCors("AllowLocalhost");
 
 // Autenticación y Autorización
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Migraciones y creación de base de datos si no existe
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
     try
     {
-        // Aplicar migraciones pendientes para crear o actualizar las tablas
+
         dbContext.Database.EnsureCreated();
         dbContext.Database.Migrate();
         Console.WriteLine("Migraciones aplicadas con éxito.");
@@ -105,7 +113,6 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// Configurar la app para usar controladores y otras funcionalidades de ASP.NET Core
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -113,7 +120,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "AuthService API v1");
-        c.RoutePrefix = string.Empty; // Hacer que Swagger sea la página principal
+        c.RoutePrefix = string.Empty;
     });
 }
 

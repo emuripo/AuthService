@@ -13,7 +13,8 @@ namespace AuthService.Application.DTO
         public string PasswordHash { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public List<int> RoleIds { get; set; } = new List<int>(); // Solo IDs de los roles
+
+        // Nuevo campo opcional para asociar con el empleado
+        public int? IdEmpleado { get; set; } // Puede ser nulo si no se especifica
     }
-
-
 }

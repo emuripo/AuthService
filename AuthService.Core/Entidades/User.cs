@@ -19,7 +19,11 @@ namespace AuthService.Core.Entidades
 
         public bool IsActive { get; set; } = true;
 
-        // Relación muchos a muchos con roles
+        public int? IdEmpleado { get; set; }
+
         public ICollection<Role> Roles { get; set; } = new List<Role>();
+
+        
+        
     }
 }

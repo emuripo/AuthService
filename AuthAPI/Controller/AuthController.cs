@@ -2,16 +2,15 @@
 using Microsoft.EntityFrameworkCore;
 using AuthService.Core.Entidades;
 using AuthService.Application.DTO;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using AuthService.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
-using System;
 using System.Security.Claims;
+using Newtonsoft.Json;
+using System.Net.Http;
+using FuncionarioService.Application.DTO;
 
 namespace AuthService.API.Controllers
 {
@@ -21,40 +20,52 @@ namespace AuthService.API.Controllers
     {
         private readonly AuthDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IHttpClientFactory _httpClientFactory; // Inyectar IHttpClientFactory
 
-        public AuthController(AuthDbContext context, IConfiguration configuration)
+        public AuthController(AuthDbContext context, IConfiguration configuration, IHttpClientFactory httpClientFactory)
         {
             _context = context;
             _configuration = configuration;
+            _httpClientFactory = httpClientFactory; // Asignar el HttpClientFactory
         }
 
         // POST: api/Auth/Register
         [HttpPost("Register")]
-        public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterUserDTO userDTO)
+        public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterUserDTO RegisterUserDTO)
         {
-            // Hash the password before saving it
-            var hashedPassword = HashPassword(userDTO.PasswordHash);
+            // Validar IdEmpleado si se proporciona
+            if (RegisterUserDTO.IdEmpleado.HasValue)
+            {
+                var isValidEmpleado = await VerifyIdEmpleado(RegisterUserDTO.IdEmpleado.Value);
+                if (!isValidEmpleado)
+                {
+                    return BadRequest("IdEmpleado no es válido o el empleado no está activo.");
+                }
+            }
 
-            // Buscar los roles en la base de datos según los IDs
+            // Hash de la contraseña
+            var hashedPassword = HashPassword(RegisterUserDTO.PasswordHash);
+
+            // Obtener roles
             var roles = await _context.Roles
-                .Where(r => userDTO.RoleIds.Contains(r.Id))
-                .Include(r => r.RolePermissions) // Incluye los permisos del rol
+                .Where(r => RegisterUserDTO.RoleIds.Contains(r.Id))
+                .Include(r => r.RolePermissions)
                 .ThenInclude(rp => rp.Permission)
                 .ToListAsync();
 
             var user = new User
             {
-                Username = userDTO.Username,
-                Email = userDTO.Email,
-                PasswordHash = hashedPassword, // Save the hashed password
-                Roles = roles,  // Asignar roles existentes
-                IsActive = userDTO.IsActive
+                Username = RegisterUserDTO.Username,
+                Email = RegisterUserDTO.Email,
+                PasswordHash = hashedPassword,
+                Roles = roles,
+                IsActive = RegisterUserDTO.IsActive,
+                IdEmpleado = RegisterUserDTO.IdEmpleado  // Asignar IdEmpleado si está presente
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // Devolver solo los campos esenciales en la respuesta
             var userResponse = new UserResponseDTO
             {
                 Id = user.Id,
@@ -65,7 +76,6 @@ namespace AuthService.API.Controllers
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userResponse);
         }
-
 
         // POST: api/Auth/Login
         [HttpPost("Login")]
@@ -207,6 +217,32 @@ namespace AuthService.API.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        // Método para verificar si el IdEmpleado es válido en FuncionarioService
+        private async Task<bool> VerifyIdEmpleado(int idEmpleado)
+        {
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                var serviceUrl = _configuration["FuncionarioServiceUrl"]; // Obtener la URL base desde configuración
+                var response = await client.GetAsync($"{serviceUrl}/{idEmpleado}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var empleadoData = await response.Content.ReadAsStringAsync();
+                    var empleado = JsonConvert.DeserializeObject<EmpleadoDTO>(empleadoData);
+
+                    // Verificación adicional del estado del empleado
+                    return empleado != null && empleado.EmpleadoActivo;
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                Console.WriteLine($"Error de conexión con FuncionarioService: {ex.Message}");
+            }
+
+            return false;
         }
 
         private bool VerifyPasswordHash(string password, string storedHash)

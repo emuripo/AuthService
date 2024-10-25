@@ -45,6 +45,11 @@ namespace AuthService.Infrastructure.Data
                 .IsRequired()
                 .HasMaxLength(100);
 
+            // Configuración de IdEmpleado en User
+            modelBuilder.Entity<User>()
+                .Property(u => u.IdEmpleado)
+                .IsRequired(false); // Permitir valores nulos si IdEmpleado es opcional
+
             modelBuilder.Entity<Role>()
                 .Property(r => r.RoleName)
                 .IsRequired()
