@@ -104,7 +104,8 @@ namespace AuthService.API.Controllers
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Email, user.Email)
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim("IdEmpleado", user.IdEmpleado?.ToString() ?? "") 
             };
 
             // Add roles and permissions as claims
