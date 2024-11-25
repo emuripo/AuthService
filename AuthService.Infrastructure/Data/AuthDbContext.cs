@@ -1,6 +1,7 @@
 ﻿using AuthService.Core.Entidades;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace AuthService.Infrastructure.Data
 {
@@ -19,11 +20,15 @@ namespace AuthService.Infrastructure.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Configuración de Relaciones Muchos a Muchos entre Usuario y Rol
+            // Configuración de Relaciones Muchos a Muchos entre Usuario y Rol con la tabla intermedia sin entidad
             modelBuilder.Entity<User>()
                 .HasMany(u => u.Roles)
                 .WithMany(r => r.Users)
-                .UsingEntity(j => j.ToTable("UserRoles"));
+                .UsingEntity<Dictionary<string, object>>(
+                    "UserRole",
+                    ur => ur.HasOne<Role>().WithMany().HasForeignKey("RoleId"),
+                    ur => ur.HasOne<User>().WithMany().HasForeignKey("UserId")
+                );
 
             // Configuración de la tabla intermedia RolePermission
             modelBuilder.Entity<RolePermission>()
@@ -45,7 +50,6 @@ namespace AuthService.Infrastructure.Data
                 .IsRequired()
                 .HasMaxLength(100);
 
-            // Configuración de IdEmpleado en User
             modelBuilder.Entity<User>()
                 .Property(u => u.IdEmpleado)
                 .IsRequired(false); // Permitir valores nulos si IdEmpleado es opcional
@@ -131,6 +135,35 @@ namespace AuthService.Infrastructure.Data
                 new RolePermission { RoleId = 4, PermissionId = 11 },
                 new RolePermission { RoleId = 4, PermissionId = 12 }
             );
+
+            // Hash de la contraseña "admin" para el usuario admin
+            string hashedPassword = HashPassword("admin");
+
+            // Seed de Datos Iniciales para el Usuario 'admin'
+            modelBuilder.Entity<User>().HasData(
+                new User
+                {
+                    Id = 1,
+                    Username = "admin",
+                    Email = "admin@sekcostarica.com",
+                    PasswordHash = hashedPassword,
+                    IsActive = true,
+                    IdEmpleado = null // Sin empleado asignado
+                }
+            );
+
+            // Asignación del Rol 'Admin' al Usuario 'admin' en la relación de unión
+            modelBuilder.Entity("UserRole").HasData(new { UserId = 1, RoleId = 1 });
+        }
+
+        private string HashPassword(string password)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var bytes = Encoding.UTF8.GetBytes(password);
+                var hash = sha256.ComputeHash(bytes);
+                return Convert.ToBase64String(hash);
+            }
         }
     }
 }

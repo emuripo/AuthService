@@ -20,52 +20,94 @@ namespace AuthService.API.Controllers
     {
         private readonly AuthDbContext _context;
         private readonly IConfiguration _configuration;
-        private readonly IHttpClientFactory _httpClientFactory; // Inyectar IHttpClientFactory
+        private readonly IHttpClientFactory _httpClientFactory;
 
         public AuthController(AuthDbContext context, IConfiguration configuration, IHttpClientFactory httpClientFactory)
         {
             _context = context;
             _configuration = configuration;
-            _httpClientFactory = httpClientFactory; // Asignar el HttpClientFactory
+            _httpClientFactory = httpClientFactory;
+        }
+
+        // GET: api/Auth/Roles
+        [HttpGet("Roles")]
+        public async Task<ActionResult<IEnumerable<RoleDTO>>> GetRoles()
+        {
+            var roles = await _context.Roles
+                .Include(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
+                .ToListAsync();
+
+            var roleDTOs = roles.Select(role => new RoleDTO
+            {
+                Id = role.Id,
+                RoleName = role.RoleName,
+                Permissions = role.RolePermissions
+                    .Where(rp => rp.Permission != null) // Filtrar referencias nulas
+                    .Select(rp => new PermissionDTO
+                    {
+                        Id = rp.Permission!.Id, // '!' indica que estamos seguros de que no será nulo
+                        PermissionName = rp.Permission.PermissionName,
+                        Description = rp.Permission.Description
+                    })
+                    .ToList()
+            }).ToList();
+
+            return Ok(roleDTOs);
         }
 
         // POST: api/Auth/Register
         [HttpPost("Register")]
-        public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterUserDTO RegisterUserDTO)
+        public async Task<ActionResult<UserResponseDTO>> Register([FromBody] RegisterUserDTO registerUserDTO)
         {
-            // Validar IdEmpleado si se proporciona
-            if (RegisterUserDTO.IdEmpleado.HasValue)
+            // Validar si el nombre de usuario ya existe
+            if (await _context.Users.AnyAsync(u => u.Username == registerUserDTO.Username))
             {
-                var isValidEmpleado = await VerifyIdEmpleado(RegisterUserDTO.IdEmpleado.Value);
+                return BadRequest($"El nombre de usuario '{registerUserDTO.Username}' ya está en uso.");
+            }
+
+            // Validar si el correo electrónico ya existe
+            if (await _context.Users.AnyAsync(u => u.Email == registerUserDTO.Email))
+            {
+                return BadRequest($"El correo electrónico '{registerUserDTO.Email}' ya está en uso.");
+            }
+
+            // Validar si el IdEmpleado es válido si está presente
+            if (registerUserDTO.IdEmpleado.HasValue)
+            {
+                var isValidEmpleado = await VerifyIdEmpleado(registerUserDTO.IdEmpleado.Value);
                 if (!isValidEmpleado)
                 {
                     return BadRequest("IdEmpleado no es válido o el empleado no está activo.");
                 }
             }
 
-            // Hash de la contraseña
-            var hashedPassword = HashPassword(RegisterUserDTO.PasswordHash);
+            // Generar hash de la contraseña
+            var hashedPassword = HashPassword(registerUserDTO.PasswordHash);
 
-            // Obtener roles
+            // Obtener roles seleccionados
             var roles = await _context.Roles
-                .Where(r => RegisterUserDTO.RoleIds.Contains(r.Id))
+                .Where(r => registerUserDTO.RoleIds.Contains(r.Id))
                 .Include(r => r.RolePermissions)
                 .ThenInclude(rp => rp.Permission)
                 .ToListAsync();
 
+            // Crear el usuario
             var user = new User
             {
-                Username = RegisterUserDTO.Username,
-                Email = RegisterUserDTO.Email,
+                Username = registerUserDTO.Username,
+                Email = registerUserDTO.Email,
                 PasswordHash = hashedPassword,
                 Roles = roles,
-                IsActive = RegisterUserDTO.IsActive,
-                IdEmpleado = RegisterUserDTO.IdEmpleado  // Asignar IdEmpleado si está presente
+                IsActive = registerUserDTO.IsActive,
+                IdEmpleado = registerUserDTO.IdEmpleado
             };
 
+            // Agregar usuario a la base de datos
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            // Crear respuesta
             var userResponse = new UserResponseDTO
             {
                 Id = user.Id,
@@ -95,27 +137,49 @@ namespace AuthService.API.Controllers
             var token = GenerateJwtToken(user);
             return Ok(new { token });
         }
-
         private string GenerateJwtToken(User user)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
+            // Validar que la clave JWT no sea nula o vacía
+            var jwtKey = _configuration["Jwt:Key"];
+            if (string.IsNullOrEmpty(jwtKey))
+            {
+                throw new InvalidOperationException("La clave JWT no está configurada en el archivo de configuración.");
+            }
+
+            var issuer = _configuration["Jwt:Issuer"];
+            if (string.IsNullOrEmpty(issuer))
+            {
+                throw new InvalidOperationException("El emisor JWT no está configurado en el archivo de configuración.");
+            }
+
+            var audience = _configuration["Jwt:Audience"];
+            if (string.IsNullOrEmpty(audience))
+            {
+                throw new InvalidOperationException("La audiencia JWT no está configurada en el archivo de configuración.");
+            }
+
+            // Generar la clave y las credenciales
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            // Crear los claims
             var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Email, user.Email),
-                new Claim("IdEmpleado", user.IdEmpleado?.ToString() ?? "") 
-            };
+    {
+        new Claim(ClaimTypes.Name, user.Username),
+        new Claim(ClaimTypes.Email, user.Email),
+        new Claim("IdEmpleado", user.IdEmpleado?.ToString() ?? "")
+    };
 
-            // Add roles and permissions as claims
             claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role.RoleName)));
             claims.AddRange(user.Roles
-                .SelectMany(role => role.RolePermissions.Select(rp => new Claim("Permission", rp.Permission.PermissionName))));
+                .SelectMany(role => role.RolePermissions
+                    .Where(rp => rp.Permission != null) // Filtrar permisos nulos
+                    .Select(rp => new Claim("Permission", rp.Permission!.PermissionName))));
 
+            // Crear el token JWT
             var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
+                issuer: issuer,
+                audience: audience,
                 claims: claims,
                 expires: DateTime.Now.AddHours(1),
                 signingCredentials: creds);
@@ -142,12 +206,14 @@ namespace AuthService.API.Controllers
                 {
                     Id = role.Id,
                     RoleName = role.RoleName,
-                    Permissions = role.RolePermissions.Select(rp => new PermissionDTO
-                    {
-                        Id = rp.Permission.Id,
-                        PermissionName = rp.Permission.PermissionName,
-                        Description = rp.Permission.Description // Mapea también la descripción
-                    }).ToList()
+                    Permissions = role.RolePermissions
+                        .Where(rp => rp.Permission != null) // Filtrar referencias nulas
+                        .Select(rp => new PermissionDTO
+                        {
+                            Id = rp.Permission!.Id, // Usamos '!' para indicar que no será null después del filtro
+                            PermissionName = rp.Permission.PermissionName,
+                            Description = rp.Permission.Description
+                        }).ToList()
                 }).ToList()
             }).ToList();
 
@@ -178,12 +244,14 @@ namespace AuthService.API.Controllers
                 {
                     Id = role.Id,
                     RoleName = role.RoleName,
-                    Permissions = role.RolePermissions.Select(rp => new PermissionDTO
-                    {
-                        Id = rp.Permission.Id,
-                        PermissionName = rp.Permission.PermissionName,
-                        Description = rp.Permission.Description
-                    }).ToList()
+                    Permissions = role.RolePermissions
+                        .Where(rp => rp.Permission != null) // Filtrar referencias nulas
+                        .Select(rp => new PermissionDTO
+                        {
+                            Id = rp.Permission!.Id, // Usamos '!' porque estamos seguros de que no será null
+                            PermissionName = rp.Permission.PermissionName,
+                            Description = rp.Permission.Description
+                        }).ToList()
                 }).ToList()
             };
 
@@ -203,18 +271,15 @@ namespace AuthService.API.Controllers
                 return NotFound("User not found.");
             }
 
-            // Actualizar campos del usuario
             user.Username = updateUserDTO.Username;
             user.Email = updateUserDTO.Email;
 
-            // Actualizar los roles del usuario
             var roles = await _context.Roles
                 .Where(r => updateUserDTO.RoleIds.Contains(r.Id))
                 .ToListAsync();
 
             user.Roles = roles;
 
-            // Guardar los cambios en la base de datos
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -226,7 +291,7 @@ namespace AuthService.API.Controllers
             try
             {
                 var client = _httpClientFactory.CreateClient();
-                var serviceUrl = _configuration["FuncionarioServiceUrl"]; // Obtener la URL base desde configuración
+                var serviceUrl = _configuration["FuncionarioServiceUrl"];
                 var response = await client.GetAsync($"{serviceUrl}/{idEmpleado}");
 
                 if (response.IsSuccessStatusCode)
@@ -234,7 +299,6 @@ namespace AuthService.API.Controllers
                     var empleadoData = await response.Content.ReadAsStringAsync();
                     var empleado = JsonConvert.DeserializeObject<EmpleadoDTO>(empleadoData);
 
-                    // Verificación adicional del estado del empleado
                     return empleado != null && empleado.EmpleadoActivo;
                 }
             }

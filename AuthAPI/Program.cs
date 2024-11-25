@@ -102,8 +102,6 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-
-        dbContext.Database.EnsureCreated();
         dbContext.Database.Migrate();
         Console.WriteLine("Migraciones aplicadas con éxito.");
     }

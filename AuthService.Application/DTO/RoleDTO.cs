@@ -6,8 +6,6 @@ namespace AuthService.Application.DTO
     {
         public int Id { get; set; }
         public string RoleName { get; set; } = string.Empty;
-
-        // Agregar la propiedad Permissions
         public List<PermissionDTO> Permissions { get; set; } = new List<PermissionDTO>();
     }
 }
