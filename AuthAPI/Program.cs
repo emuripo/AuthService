@@ -20,7 +20,6 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowCredentials());
 });
-;
 
 // Configurar DbContext y conexión a SQL Server
 builder.Services.AddDbContext<AuthDbContext>(options =>
@@ -89,25 +88,42 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 
 var app = builder.Build();
 
-
 app.UseCors("AllowLocalhost");
 
 // Autenticación y Autorización
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Aplicar migraciones con reintentos
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
-    try
+    const int maxRetries = 10; // Número máximo de intentos
+    const int delayInSeconds = 5; // Tiempo entre intentos
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++)
     {
-        dbContext.Database.Migrate();
-        Console.WriteLine("Migraciones aplicadas con éxito.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error al aplicar migraciones: {ex.Message}");
+        try
+        {
+            Console.WriteLine($"Intentando aplicar migraciones. Intento {attempt}/{maxRetries}...");
+            dbContext.Database.Migrate();
+            Console.WriteLine("Migraciones aplicadas con éxito.");
+            break;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al aplicar migraciones: {ex.Message}");
+
+            if (attempt == maxRetries)
+            {
+                Console.WriteLine("No se pudo aplicar las migraciones después de varios intentos. Cerrando aplicación.");
+                throw; // Lanza la excepción si todos los intentos fallan
+            }
+
+            Console.WriteLine($"Reintentando en {delayInSeconds} segundos...");
+            await Task.Delay(delayInSeconds * 1000); // Espera antes de reintentar
+        }
     }
 }
 
