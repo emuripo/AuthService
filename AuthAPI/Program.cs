@@ -7,6 +7,8 @@ using System.Text;
 using AuthService.Infrastructure.Data;
 using AuthService.Application.Mappings;
 using System.Text.Json.Serialization; // Para manejar las referencias cíclicas en JSON
+using AuthService.Application.Interfaces;
+using AuthService.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,12 +52,15 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"], // Tomado desde appsettings.json
-        ValidAudience = builder.Configuration["Jwt:Audience"], // Tomado desde appsettings.json
+        ValidIssuer = builder.Configuration["Jwt:Issuer"], 
+        ValidAudience = builder.Configuration["Jwt:Audience"], 
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"])), // Clave secreta desde appsettings.json
-        ClockSkew = TimeSpan.Zero // Eliminar la diferencia de tiempo por defecto
+        ClockSkew = TimeSpan.Zero 
     };
 });
+
+// **Registrar Servicios de Aplicación**
+builder.Services.AddScoped<ILogService, LogService>();
 
 // Configurar Swagger para la documentación de la API sin requerir autenticación
 builder.Services.AddEndpointsApiExplorer();

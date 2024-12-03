@@ -15,10 +15,32 @@ namespace AuthService.Infrastructure.Data
         public DbSet<Role> Roles { get; set; }
         public DbSet<Permission> Permissions { get; set; }
         public DbSet<RolePermission> RolePermissions { get; set; } // Tabla intermedia
+        public DbSet<Logs> Logs { get; set; } // Tabla para Logs
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // Configuración de Logs
+            modelBuilder.Entity<Logs>(entity =>
+            {
+                entity.Property(e => e.EventName)
+                      .IsRequired()
+                      .HasMaxLength(255);
+
+                entity.Property(e => e.EventDetails)
+                      .HasDefaultValue(string.Empty);
+
+                entity.Property(e => e.Username)
+                      .IsRequired()
+                      .HasMaxLength(255);
+
+                entity.Property(e => e.UserRole)
+                      .HasMaxLength(255);
+
+                entity.Property(e => e.Timestamp)
+                      .IsRequired();
+            });
 
             // Configuración de Relaciones Muchos a Muchos entre Usuario y Rol con la tabla intermedia sin entidad
             modelBuilder.Entity<User>()
